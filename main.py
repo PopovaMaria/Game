@@ -1,4 +1,7 @@
-import gc
+from __future__ import annotations
+from typing import Optional
+
+
 import math
 import random
 
@@ -22,8 +25,22 @@ TEXTURE_RIGHT = 1
 TEXTURE_UP = 2
 TEXTURE_DOWN = 3
 
-class Frog(arcade.Sprite):
+class SingletonMeta(type):
+    """
+    В Python класс Одиночка можно реализовать по-разному. Возможные способы
+    включают себя базовый класс, декоратор, метакласс. Мы воспользуемся
+    метаклассом, поскольку он лучше всего подходит для этой цели.
+    """
 
+    _instance: Optional[Singleton] = None
+
+    def __call__(self) -> Singleton:
+        if self._instance is None:
+            self._instance = super().__call__()
+        return self._instance
+
+
+class Frog(arcade.Sprite, metaclass=SingletonMeta):
     def __init__(self):
         super().__init__()
 
@@ -37,8 +54,10 @@ class Frog(arcade.Sprite):
         texture = arcade.load_texture("images/frog4.png")
         self.textures.append(texture)
 
-
         self.scale = SPRITE_SCALING_FROG
+
+        self.center_x = 500
+        self.center_y = 400
 
         self.set_texture(TEXTURE_RIGHT)
 
@@ -66,6 +85,39 @@ class Frog(arcade.Sprite):
         elif self.top > SCREEN_HEIGHT - 1:
             self.top = SCREEN_HEIGHT - 1
 
+
+
+
+class Bug(arcade.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.textures = []
+        texture = arcade.load_texture("images/bug.png")
+        self.textures.append(texture)
+
+        self.scale = SPRITE_SCALING_BUG
+
+        self.set_texture(TEXTURE_LEFT)
+
+        self.center_x = random.randrange(SCREEN_WIDTH)
+        self.center_y = random.randrange(SCREEN_HEIGHT)
+
+class Flower(arcade.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.textures = []
+        texture = arcade.load_texture("images/flower.png")
+        self.textures.append(texture)
+
+        self.scale = SPRITE_SCALING_FLOWER
+
+        self.set_texture(TEXTURE_LEFT)
+
+        self.center_x = random.randrange(SCREEN_WIDTH)
+        self.center_y = random.randrange(SCREEN_HEIGHT)
+
+
+
 class MyGame(arcade.Window):
     """ Главный класс приложения. """
 
@@ -87,35 +139,25 @@ class MyGame(arcade.Window):
             self.bug_list = arcade.SpriteList()
             self.tongue_list = arcade.SpriteList()
             self.flower_list = arcade.SpriteList()
-            self.object_list = arcade.SpriteList()
+            self.obstacle_list = arcade.SpriteList()
 
             self.score = 0
 
             self.frog_sprite = Frog()
-            self.frog_sprite.center_x = 500
-            self.frog_sprite.center_y = 400
             self.frog_list.append(self.frog_sprite)
 
             # Создать монетки
             for i in range(BUG_COUNT):
-                bug = arcade.Sprite("images/bug.png", SPRITE_SCALING_BUG)
-
-                bug.center_x = random.randrange(SCREEN_WIDTH)
-                bug.center_y = random.randrange(SCREEN_HEIGHT)
-
+                bug = Bug()
                 self.bug_list.append(bug)
-                self.object_list.append(bug)
+                self.obstacle_list.append(bug)
 
             for i in range(FLOWER_COUNT):
-                flower = arcade.Sprite("images/flower.png", SPRITE_SCALING_FLOWER)
-
-                flower.center_x = random.randrange(SCREEN_WIDTH)
-                flower.center_y = random.randrange(SCREEN_HEIGHT)
-
+                flower = Flower()
                 self.flower_list.append(flower)
-                self.object_list.append(flower)
+                self.obstacle_list.append(flower)
 
-            self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.object_list)
+            self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
 
     def on_draw(self):
         """ Отрендерить этот экран. """
