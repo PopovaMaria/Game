@@ -1,14 +1,21 @@
+import gc
+import math
 import random
 
 import arcade
-import os
 
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 800
 SPRITE_SCALING_BUG = 0.1
+SPRITE_SCALING_FLOWER = 0.1
 SPRITE_SCALING_FROG = 0.3
-BUG_COUNT = 5
-MOVEMENT_SPEED = 4
+SPRITE_SCALING_TONGUE = 0.08
+
+BUG_COUNT = 10
+FLOWER_COUNT = 8
+
+MOVEMENT_SPEED = 2
+TONGUE_SPEED = 5
 
 TEXTURE_LEFT = 0
 TEXTURE_RIGHT = 1
@@ -21,8 +28,6 @@ class Frog(arcade.Sprite):
         super().__init__()
 
         self.textures = []
-        # Load a left facing texture and a right facing texture.
-        # flipped_horizontally=True will mirror the image we load.
         texture = arcade.load_texture("images/frog2.png")
         self.textures.append(texture)
         texture = arcade.load_texture("images/frog1.png")
@@ -35,7 +40,6 @@ class Frog(arcade.Sprite):
 
         self.scale = SPRITE_SCALING_FROG
 
-        # By default, face right.
         self.set_texture(TEXTURE_RIGHT)
 
     def update(self):
@@ -67,12 +71,11 @@ class MyGame(arcade.Window):
 
     def __init__(self, width, height):
         super().__init__(width, height)
-
-        # Variables that will hold sprite lists
         self.bug_list = None
-
-        # Set up the player info
+        self.tongue_list = None
+        self.flower_list = None
         self.frog_list = None
+        self.score_text = None
         arcade.set_background_color(arcade.color.FRENCH_BEIGE)
 
     def setup(self):
@@ -82,31 +85,37 @@ class MyGame(arcade.Window):
             # Создать список спрайтов
             self.frog_list = arcade.SpriteList()
             self.bug_list = arcade.SpriteList()
+            self.tongue_list = arcade.SpriteList()
+            self.flower_list = arcade.SpriteList()
+            self.object_list = arcade.SpriteList()
 
-            # Счет
             self.score = 0
 
-            # Задать игрока и
-            # Его изображение из kenney.nl
             self.frog_sprite = Frog()
-            self.frog_sprite.center_x = 500  # Стартовая позиция
+            self.frog_sprite.center_x = 500
             self.frog_sprite.center_y = 400
             self.frog_list.append(self.frog_sprite)
 
             # Создать монетки
             for i in range(BUG_COUNT):
-                # Создать инстанс монеток
-                # и их изображение из kenney.nl
                 bug = arcade.Sprite("images/bug.png", SPRITE_SCALING_BUG)
 
-                # Задать положение монеток
                 bug.center_x = random.randrange(SCREEN_WIDTH)
                 bug.center_y = random.randrange(SCREEN_HEIGHT)
 
-                # Добавить монетку к списку
                 self.bug_list.append(bug)
+                self.object_list.append(bug)
 
-            self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.bug_list)
+            for i in range(FLOWER_COUNT):
+                flower = arcade.Sprite("images/flower.png", SPRITE_SCALING_FLOWER)
+
+                flower.center_x = random.randrange(SCREEN_WIDTH)
+                flower.center_y = random.randrange(SCREEN_HEIGHT)
+
+                self.flower_list.append(flower)
+                self.object_list.append(flower)
+
+            self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.object_list)
 
     def on_draw(self):
         """ Отрендерить этот экран. """
@@ -114,18 +123,95 @@ class MyGame(arcade.Window):
         # Здесь код рисунка
         self.frog_list.draw()
         self.bug_list.draw()
+        self.flower_list.draw()
+        self.tongue_list.draw()
+
+        output = f"Score: {self.score}"
+        arcade.draw_text(output, 10, 20, arcade.color.WHITE, 14)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+
+        # Create a bullet
+        tongue = arcade.Sprite("images/tongue.png", SPRITE_SCALING_TONGUE)
+
+        # Position the bullet at the player's current location
+        if self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_LEFT]:
+            start_x = self.frog_sprite.center_x-50
+            start_y = self.frog_sprite.center_y
+        elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_RIGHT]:
+            start_x = self.frog_sprite.center_x+50
+            start_y = self.frog_sprite.center_y
+        elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_UP]:
+            start_x = self.frog_sprite.center_x
+            start_y = self.frog_sprite.center_y-50
+        else:
+            start_x = self.frog_sprite.center_x
+            start_y = self.frog_sprite.center_y+50
+        tongue.center_x = start_x
+        tongue.center_y = start_y
+
+        # Get from the mouse the destination location for the bullet
+        # IMPORTANT! If you have a scrolling screen, you will also need
+        # to add in self.view_bottom and self.view_left.
+        dest_x = x
+        dest_y = y
+
+        # Do math to calculate how to get the bullet to the destination.
+        # Calculation the angle in radians between the start points
+        # and end points. This is the angle the bullet will travel.
+        x_diff = dest_x - start_x
+        y_diff = dest_y - start_y
+        angle = math.atan2(y_diff, x_diff)
+
+        # Angle the bullet sprite so it doesn't look like it is flying
+        # sideways.
+        tongue.angle = math.degrees(angle)
+        print(f"Bullet angle: {tongue.angle:.2f}")
+
+        # Taking into account the angle, calculate our change_x
+        # and change_y. Velocity is how fast the bullet travels.
+        tongue.change_x = math.cos(angle) * TONGUE_SPEED
+        tongue.change_y = math.sin(angle) * TONGUE_SPEED
+
+        # Add the bullet to the appropriate lists
+        self.tongue_list.append(tongue)
 
     def on_update(self, delta_time):
         """ Здесь вся игровая логика и логика перемещения."""
         self.frog_list.update()
         self.bug_list.update()
         self.physics_engine.update()
+        # Call update on all sprites
+        self.tongue_list.update()
+
+        # Loop through each bullet
+        for tongue in self.tongue_list:
+
+            # Check this bullet to see if it hit a coin
+            hit_list = arcade.check_for_collision_with_list(tongue, self.bug_list)
+            dont_hit_list = arcade.check_for_collision_with_list(tongue, self.flower_list)
+
+            # If it did, get rid of the bullet
+            if len(hit_list) > 0:
+                tongue.remove_from_sprite_lists()
+
+            if len(dont_hit_list) > 0:
+                self.close()
+
+            # For every coin we hit, add to the score and remove the coin
+            for bug in hit_list:
+                bug.remove_from_sprite_lists()
+                self.score += 1
+            if self.score == BUG_COUNT:
+                self.close()
+
+            # If the bullet flies off-screen, remove it.
+            if tongue.bottom > self.width/2 or tongue.top < 0 or tongue.right < 0 or tongue.left > self.width/2:
+                tongue.remove_from_sprite_lists()
 
 
 
     def on_key_press(self, key, modifiers):
-        """Вызывается при нажатии пользователем клавиши"""
-
         if key == arcade.key.UP:
             self.frog_sprite.change_y = MOVEMENT_SPEED
         elif key == arcade.key.DOWN:
@@ -136,8 +222,6 @@ class MyGame(arcade.Window):
             self.frog_sprite.change_x = MOVEMENT_SPEED
 
     def on_key_release(self, key, modifiers):
-        """Called when the user releases a key. """
-
         if key == arcade.key.UP or key == arcade.key.DOWN:
             self.frog_sprite.change_y = 0
         elif key == arcade.key.LEFT or key == arcade.key.RIGHT:
@@ -146,11 +230,7 @@ class MyGame(arcade.Window):
 
 
 
-
-
 def main():
-    # bug = arcade.Sprite("images/bug.png", SPRITE_SCALING_BUG)
-    # frog = arcade.Sprite("images/frog.png", SPRITE_SCALING_FROG)
     game = MyGame(SCREEN_WIDTH, SCREEN_HEIGHT)
     game.setup()
     arcade.run()
