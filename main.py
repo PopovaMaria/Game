@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-
+from abc import ABC, abstractmethod
 
 import math
 import random
@@ -24,6 +24,7 @@ TEXTURE_LEFT = 0
 TEXTURE_RIGHT = 1
 TEXTURE_UP = 2
 TEXTURE_DOWN = 3
+
 
 class SingletonMeta(type):
     """
@@ -86,36 +87,65 @@ class Frog(arcade.Sprite, metaclass=SingletonMeta):
             self.top = SCREEN_HEIGHT - 1
 
 
+class Creator(arcade.Sprite):
+    @staticmethod
+    @abstractmethod
+    def factory_method():
+        """
+        Обратите внимание, что Создатель может также обеспечить реализацию
+        фабричного метода по умолчанию.
+        """
+        pass
 
 
-class Bug(arcade.Sprite):
-    def __init__(self):
-        super().__init__()
-        self.textures = []
+class BugCreator(Creator):
+    @staticmethod
+    def factory_method() -> Bug:
+        obj = Bug()
+
         texture = arcade.load_texture("images/bug.png")
-        self.textures.append(texture)
+        obj.textures.append(texture)
+        obj.set_texture(TEXTURE_LEFT)
 
-        self.scale = SPRITE_SCALING_BUG
+        obj.scale = SPRITE_SCALING_BUG
 
-        self.set_texture(TEXTURE_LEFT)
+        obj.center_x = random.randrange(SCREEN_WIDTH)
+        obj.center_y = random.randrange(SCREEN_HEIGHT)
+        return obj
 
-        self.center_x = random.randrange(SCREEN_WIDTH)
-        self.center_y = random.randrange(SCREEN_HEIGHT)
 
-class Flower(arcade.Sprite):
-    def __init__(self):
-        super().__init__()
-        self.textures = []
+class FlowerCreator(Creator):
+
+    @staticmethod
+    def factory_method() -> Flower:
+        obj = Flower()
+
         texture = arcade.load_texture("images/flower.png")
-        self.textures.append(texture)
+        obj.textures.append(texture)
+        obj.set_texture(TEXTURE_LEFT)
 
-        self.scale = SPRITE_SCALING_FLOWER
+        obj.scale = SPRITE_SCALING_FLOWER
 
-        self.set_texture(TEXTURE_LEFT)
+        obj.center_x = random.randrange(SCREEN_WIDTH)
+        obj.center_y = random.randrange(SCREEN_HEIGHT)
 
-        self.center_x = random.randrange(SCREEN_WIDTH)
-        self.center_y = random.randrange(SCREEN_HEIGHT)
+        return obj
 
+
+class Product(arcade.Sprite):
+    pass
+
+
+class Bug(Product):
+    pass
+
+
+class Flower(Product):
+    pass
+
+
+def client_code(creator: Creator) -> None:
+    pass
 
 
 class MyGame(arcade.Window):
@@ -132,32 +162,32 @@ class MyGame(arcade.Window):
 
     def setup(self):
         # Настроить игру здесь
-            """ Настроить игру и инициализировать переменные. """
+        """ Настроить игру и инициализировать переменные. """
 
-            # Создать список спрайтов
-            self.frog_list = arcade.SpriteList()
-            self.bug_list = arcade.SpriteList()
-            self.tongue_list = arcade.SpriteList()
-            self.flower_list = arcade.SpriteList()
-            self.obstacle_list = arcade.SpriteList()
+        # Создать список спрайтов
+        self.frog_list = arcade.SpriteList()
+        self.bug_list = arcade.SpriteList()
+        self.tongue_list = arcade.SpriteList()
+        self.flower_list = arcade.SpriteList()
+        self.obstacle_list = arcade.SpriteList()
 
-            self.score = 0
+        self.score = 0
 
-            self.frog_sprite = Frog()
-            self.frog_list.append(self.frog_sprite)
+        self.frog_sprite = Frog()
+        self.frog_list.append(self.frog_sprite)
 
-            # Создать монетки
-            for i in range(BUG_COUNT):
-                bug = Bug()
-                self.bug_list.append(bug)
-                self.obstacle_list.append(bug)
+        # Создать монетки
+        for i in range(BUG_COUNT):
+            bug = BugCreator.factory_method()
+            self.bug_list.append(bug)
+            self.obstacle_list.append(bug)
 
-            for i in range(FLOWER_COUNT):
-                flower = Flower()
-                self.flower_list.append(flower)
-                self.obstacle_list.append(flower)
+        for i in range(FLOWER_COUNT):
+            flower = FlowerCreator.factory_method()
+            self.flower_list.append(flower)
+            self.obstacle_list.append(flower)
 
-            self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
+        self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
 
     def on_draw(self):
         """ Отрендерить этот экран. """
@@ -178,17 +208,17 @@ class MyGame(arcade.Window):
 
         # Position the bullet at the player's current location
         if self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_LEFT]:
-            start_x = self.frog_sprite.center_x-50
+            start_x = self.frog_sprite.center_x - 50
             start_y = self.frog_sprite.center_y
         elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_RIGHT]:
-            start_x = self.frog_sprite.center_x+50
+            start_x = self.frog_sprite.center_x + 50
             start_y = self.frog_sprite.center_y
         elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_UP]:
             start_x = self.frog_sprite.center_x
-            start_y = self.frog_sprite.center_y-50
+            start_y = self.frog_sprite.center_y - 50
         else:
             start_x = self.frog_sprite.center_x
-            start_y = self.frog_sprite.center_y+50
+            start_y = self.frog_sprite.center_y + 50
         tongue.center_x = start_x
         tongue.center_y = start_y
 
@@ -248,10 +278,8 @@ class MyGame(arcade.Window):
                 self.close()
 
             # If the bullet flies off-screen, remove it.
-            if tongue.bottom > self.width/2 or tongue.top < 0 or tongue.right < 0 or tongue.left > self.width/2:
+            if tongue.bottom > self.width / 2 or tongue.top < 0 or tongue.right < 0 or tongue.left > self.width / 2:
                 tongue.remove_from_sprite_lists()
-
-
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.UP:
@@ -268,8 +296,6 @@ class MyGame(arcade.Window):
             self.frog_sprite.change_y = 0
         elif key == arcade.key.LEFT or key == arcade.key.RIGHT:
             self.frog_sprite.change_x = 0
-
-
 
 
 def main():
