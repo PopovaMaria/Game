@@ -29,6 +29,237 @@ TEXTURE_UP = 2
 TEXTURE_DOWN = 3
 
 
+class MyGame(arcade.Window):
+
+    def __init__(self, width, height, state: State) -> None:
+        self.transition_to(state)
+        super().__init__(width, height)
+        self.bug_list = None
+        self.tongue_list = None
+        self.flower_list = None
+        self.frog_list = None
+        self.score_text = None
+        arcade.set_background_color(arcade.color.FRENCH_BEIGE)
+        file_path = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(file_path)
+
+        self.half_width = self.width / 2
+        self.half_height = self.height / 2
+        self.theme = None
+
+    def setup(self):
+        # Настроить игру здесь
+        """ Настроить игру и инициализировать переменные. """
+
+        # Создать список спрайтов
+        self.frog_list = arcade.SpriteList()
+        self.bug_list = arcade.SpriteList()
+        self.tongue_list = arcade.SpriteList()
+        self.flower_list = arcade.SpriteList()
+        self.obstacle_list = arcade.SpriteList()
+
+        self.score = 0
+
+        self.frog_sprite = ConcreteFactory.create_frog()
+        self.frog_list.append(self.frog_sprite)
+
+        # Создать монетки
+        for i in range(BUG_COUNT):
+            bug = ConcreteFactory.create_bug()
+            self.bug_list.append(bug)
+            self.obstacle_list.append(bug)
+
+        for i in range(FLOWER_COUNT):
+            flower = ConcreteFactory.create_flower()
+            self.flower_list.append(flower)
+            self.obstacle_list.append(flower)
+
+        self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
+
+        self.set_theme()
+        self.add_dialogue_box()
+        self.add_text()
+        self.add_button()
+
+    def transition_to(self, state: State):
+        print(f"Context: Transition to {type(state).__name__}")
+        self._state = state
+        self._state.context = self
+
+    def on_key_press(self, key, modifiers):
+        self._state.on_key_press(self, key, modifiers)
+
+    def on_key_release(self, key, modifiers):
+        self._state.on_key_release(self, key, modifiers)
+
+    def on_draw(self):
+        """ Отрендерить этот экран. """
+        arcade.start_render()
+        # Здесь код рисунка
+        self.frog_list.draw()
+        self.bug_list.draw()
+        self.flower_list.draw()
+        self.tongue_list.draw()
+
+        output = f"Score: {self.score}"
+        arcade.draw_text(output, 10, 20, arcade.color.WHITE, 14)
+        super().on_draw()
+
+    def on_update(self, delta_time):
+        """ Здесь вся игровая логика и логика перемещения."""
+        self.frog_list.update()
+        self.bug_list.update()
+        self.physics_engine.update()
+        # Call update on all sprites
+        self.tongue_list.update()
+
+        # Loop through each bullet
+        for tongue in self.tongue_list:
+
+            # Check this bullet to see if it hit a coin
+            hit_list = arcade.check_for_collision_with_list(tongue, self.bug_list)
+            dont_hit_list = arcade.check_for_collision_with_list(tongue, self.flower_list)
+
+            # If it did, get rid of the bullet
+            if len(hit_list) > 0:
+                tongue.remove_from_sprite_lists()
+
+            if len(dont_hit_list) > 0:
+                self.close()
+
+            # For every coin we hit, add to the score and remove the coin
+            for bug in hit_list:
+                bug.remove_from_sprite_lists()
+                self.score += 1
+            if self.score == BUG_COUNT:
+                self.close()
+
+        if self.dialogue_box_list[0].active and type(self._state).__name__ == 'MenuClosed':
+            self.transition_to(MenuOpened())
+        elif self.dialogue_box_list[0].active is not True and type(self._state).__name__ == 'MenuOpened':
+            self.transition_to(MenuClosed())
+
+
+    def add_dialogue_box(self):
+        color = (220, 228, 255)
+        dialoguebox = arcade.gui.DialogueBox(self.half_width, self.half_height, self.half_width * 1.1,
+                                             self.half_height * 1.5, color, self.theme)
+        close_button = CloseButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 40,
+                                   theme=self.theme)
+        save_button = SaveButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 100,
+                                 theme=self.theme)
+        dialoguebox.button_list.append(close_button)
+        dialoguebox.button_list.append(save_button)
+        message = "Hello I am a Dialogue Box."
+        dialoguebox.text_list.append(
+            arcade.gui.TextBox(message, self.half_width, self.half_height, self.theme.font_color))
+        self.dialogue_box_list.append(dialoguebox)
+
+    def add_text(self):
+        message = "Press this button to activate the Dialogue Box"
+        self.text_list.append(arcade.gui.TextBox(message, self.half_width - 50, self.half_height))
+
+    def add_button(self):
+        show_button = MenuButton(self.dialogue_box_list[0], 60, self.height - 30, theme=self.theme)
+        self.button_list.append(show_button)
+
+    def set_dialogue_box_texture(self):
+        dialogue_box = ":resources:gui_themes/Fantasy/DialogueBox/DialogueBox.png"
+        self.theme.add_dialogue_box_texture(dialogue_box)
+
+    def set_button_texture(self):
+        normal = ":resources:gui_themes/Fantasy/Buttons/Normal.png"
+        hover = ":resources:gui_themes/Fantasy/Buttons/Hover.png"
+        clicked = ":resources:gui_themes/Fantasy/Buttons/Clicked.png"
+        locked = ":resources:gui_themes/Fantasy/Buttons/Locked.png"
+        self.theme.add_button_textures(normal, hover, clicked, locked)
+
+    def set_theme(self):
+        self.theme = arcade.gui.Theme()
+        self.set_dialogue_box_texture()
+        self.set_button_texture()
+        self.theme.set_font(24, arcade.color.WHITE)
+
+
+class State(ABC):
+
+    @property
+    def context(self) -> MyGame:
+        return self._context
+
+    @context.setter
+    def context(self, context: MyGame) -> None:
+        self._context = context
+
+    @abstractmethod
+    def on_key_press(self, game, key, modifiers) -> None:
+        pass
+
+    @abstractmethod
+    def on_key_release(self, game, key, modifires) -> None:
+        pass
+
+
+class MenuClosed(State):
+    def on_key_press(self, game, key, modifiers) -> None:
+        if key == arcade.key.UP:
+            game.frog_sprite.change_y = MOVEMENT_SPEED
+        elif key == arcade.key.DOWN:
+            game.frog_sprite.change_y = -MOVEMENT_SPEED
+        elif key == arcade.key.LEFT:
+            game.frog_sprite.change_x = -MOVEMENT_SPEED
+        elif key == arcade.key.RIGHT:
+            game.frog_sprite.change_x = MOVEMENT_SPEED
+        elif key == arcade.key.SPACE:
+            game.tongue_sprite = ConcreteFactory.create_tongue()
+            game.tongue_list.append(game.tongue_sprite)
+            if game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_LEFT]:
+                start_x = game.frog_sprite.center_x - 60
+                start_y = game.frog_sprite.center_y - 5
+            elif game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_RIGHT]:
+                start_x = game.frog_sprite.center_x + 60
+                start_y = game.frog_sprite.center_y + 5
+            elif game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_UP]:
+                start_x = game.frog_sprite.center_x + 5
+                start_y = game.frog_sprite.center_y - 60
+            else:
+                start_x = game.frog_sprite.center_x - 5
+                start_y = game.frog_sprite.center_y + 60
+            game.tongue_sprite.center_x = start_x
+            game.tongue_sprite.center_y = start_y
+            if game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_LEFT]:
+                game.tongue_sprite.change_x = -TONGUE_SPEED
+            elif game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_RIGHT]:
+                game.tongue_sprite.change_x = TONGUE_SPEED
+            elif game.frog_sprite.texture == game.frog_sprite.textures[TEXTURE_DOWN]:
+                game.tongue_sprite.change_y = TONGUE_SPEED
+            else:
+                game.tongue_sprite.change_y = -TONGUE_SPEED
+
+    def on_key_release(self, game, key, modifiers) -> None:
+        flag = True
+        if key == arcade.key.UP or key == arcade.key.DOWN:
+            game.frog_sprite.change_y = 0
+            flag = True
+        elif key == arcade.key.LEFT or key == arcade.key.RIGHT:
+            game.frog_sprite.change_x = 0
+            flag = False
+        if key == arcade.key.SPACE and flag is True:
+            game.tongue_sprite.change_x = 0
+            game.tongue_sprite.remove_from_sprite_lists()
+        elif key == arcade.key.SPACE and flag is False:
+            game.tongue_sprite.change_y = 0
+            game.tongue_sprite.remove_from_sprite_lists()
+
+
+class MenuOpened(State):
+    def on_key_press(self, game, key, modifiers) -> None:
+        pass
+
+    def on_key_release(self, game, key, modifiers) -> None:
+        pass
+
+
 class AbstractFactory(arcade.Sprite):
 
     @abstractmethod
@@ -264,6 +495,7 @@ class CloseButton(arcade.gui.TextButton):
             self.pressed = False
             self.dialoguebox.active = False
 
+
 class SaveButton(arcade.gui.TextButton):
     def __init__(self, dialoguebox, x, y, width=110, height=50, text="Save", theme=None):
         super().__init__(x, y, width, height, text, theme=theme)
@@ -278,200 +510,8 @@ class SaveButton(arcade.gui.TextButton):
             self.pressed = False
 
 
-
-
-
-class MyGame(arcade.Window):
-    """ Главный класс приложения. """
-
-    def __init__(self, width, height):
-        super().__init__(width, height)
-        self.bug_list = None
-        self.tongue_list = None
-        self.flower_list = None
-        self.frog_list = None
-        self.score_text = None
-        arcade.set_background_color(arcade.color.FRENCH_BEIGE)
-        file_path = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(file_path)
-
-        self.half_width = self.width / 2
-        self.half_height = self.height / 2
-        self.theme = None
-
-    def setup(self):
-        # Настроить игру здесь
-        """ Настроить игру и инициализировать переменные. """
-
-        # Создать список спрайтов
-        self.frog_list = arcade.SpriteList()
-        self.bug_list = arcade.SpriteList()
-        self.tongue_list = arcade.SpriteList()
-        self.flower_list = arcade.SpriteList()
-        self.obstacle_list = arcade.SpriteList()
-
-        self.score = 0
-
-        self.frog_sprite = ConcreteFactory.create_frog()
-        self.frog_list.append(self.frog_sprite)
-
-        # Создать монетки
-        for i in range(BUG_COUNT):
-            bug = ConcreteFactory.create_bug()
-            self.bug_list.append(bug)
-            self.obstacle_list.append(bug)
-
-        for i in range(FLOWER_COUNT):
-            flower = ConcreteFactory.create_flower()
-            self.flower_list.append(flower)
-            self.obstacle_list.append(flower)
-
-        self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
-
-        self.set_theme()
-        self.add_dialogue_box()
-        self.add_text()
-        self.add_button()
-
-    def on_draw(self):
-        """ Отрендерить этот экран. """
-        arcade.start_render()
-        # Здесь код рисунка
-        self.frog_list.draw()
-        self.bug_list.draw()
-        self.flower_list.draw()
-        self.tongue_list.draw()
-
-        output = f"Score: {self.score}"
-        arcade.draw_text(output, 10, 20, arcade.color.WHITE, 14)
-        super().on_draw()
-
-    def on_update(self, delta_time):
-        """ Здесь вся игровая логика и логика перемещения."""
-        self.frog_list.update()
-        self.bug_list.update()
-        self.physics_engine.update()
-        # Call update on all sprites
-        self.tongue_list.update()
-
-        # Loop through each bullet
-        for tongue in self.tongue_list:
-
-            # Check this bullet to see if it hit a coin
-            hit_list = arcade.check_for_collision_with_list(tongue, self.bug_list)
-            dont_hit_list = arcade.check_for_collision_with_list(tongue, self.flower_list)
-
-            # If it did, get rid of the bullet
-            if len(hit_list) > 0:
-                tongue.remove_from_sprite_lists()
-
-            if len(dont_hit_list) > 0:
-                self.close()
-
-            # For every coin we hit, add to the score and remove the coin
-            for bug in hit_list:
-                bug.remove_from_sprite_lists()
-                self.score += 1
-            if self.score == BUG_COUNT:
-                self.close()
-
-            if self.dialogue_box_list[0].active:
-                return
-
-    def on_key_press(self, key, modifiers):
-
-        if key == arcade.key.UP:
-            self.frog_sprite.change_y = MOVEMENT_SPEED
-        elif key == arcade.key.DOWN:
-            self.frog_sprite.change_y = -MOVEMENT_SPEED
-        elif key == arcade.key.LEFT:
-            self.frog_sprite.change_x = -MOVEMENT_SPEED
-        elif key == arcade.key.RIGHT:
-            self.frog_sprite.change_x = MOVEMENT_SPEED
-        elif key == arcade.key.SPACE:
-            self.tongue_sprite = ConcreteFactory.create_tongue()
-            self.tongue_list.append(self.tongue_sprite)
-            if self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_LEFT]:
-                start_x = self.frog_sprite.center_x - 60
-                start_y = self.frog_sprite.center_y - 5
-            elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_RIGHT]:
-                start_x = self.frog_sprite.center_x + 60
-                start_y = self.frog_sprite.center_y + 5
-            elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_UP]:
-                start_x = self.frog_sprite.center_x + 5
-                start_y = self.frog_sprite.center_y - 60
-            else:
-                start_x = self.frog_sprite.center_x - 5
-                start_y = self.frog_sprite.center_y + 60
-            self.tongue_sprite.center_x = start_x
-            self.tongue_sprite.center_y = start_y
-            if self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_LEFT]:
-                self.tongue_sprite.change_x = -TONGUE_SPEED
-            elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_RIGHT]:
-                self.tongue_sprite.change_x = TONGUE_SPEED
-            elif self.frog_sprite.texture == self.frog_sprite.textures[TEXTURE_DOWN]:
-                self.tongue_sprite.change_y = TONGUE_SPEED
-            else:
-                self.tongue_sprite.change_y = -TONGUE_SPEED
-
-    def on_key_release(self, key, modifiers):
-        flag = True
-        if key == arcade.key.UP or key == arcade.key.DOWN:
-            self.frog_sprite.change_y = 0
-            flag = True
-        elif key == arcade.key.LEFT or key == arcade.key.RIGHT:
-            self.frog_sprite.change_x = 0
-            flag = False
-        if key == arcade.key.SPACE and flag is True:
-            self.tongue_sprite.change_x = 0
-            self.tongue_sprite.remove_from_sprite_lists()
-        elif key == arcade.key.SPACE and flag is False:
-            self.tongue_sprite.change_y = 0
-            self.tongue_sprite.remove_from_sprite_lists()
-
-    def add_dialogue_box(self):
-        color = (220, 228, 255)
-        dialoguebox = arcade.gui.DialogueBox(self.half_width, self.half_height, self.half_width * 1.1,
-                                             self.half_height * 1.5, color, self.theme)
-        close_button = CloseButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 40,
-                                   theme=self.theme)
-        save_button = SaveButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 100,
-                                   theme=self.theme)
-        dialoguebox.button_list.append(close_button)
-        dialoguebox.button_list.append(save_button)
-        message = "Hello I am a Dialogue Box."
-        dialoguebox.text_list.append(
-            arcade.gui.TextBox(message, self.half_width, self.half_height, self.theme.font_color))
-        self.dialogue_box_list.append(dialoguebox)
-
-    def add_text(self):
-        message = "Press this button to activate the Dialogue Box"
-        self.text_list.append(arcade.gui.TextBox(message, self.half_width - 50, self.half_height))
-
-    def add_button(self):
-        show_button = MenuButton(self.dialogue_box_list[0], 60, self.height - 30, theme=self.theme)
-        self.button_list.append(show_button)
-
-    def set_dialogue_box_texture(self):
-        dialogue_box = ":resources:gui_themes/Fantasy/DialogueBox/DialogueBox.png"
-        self.theme.add_dialogue_box_texture(dialogue_box)
-
-    def set_button_texture(self):
-        normal = ":resources:gui_themes/Fantasy/Buttons/Normal.png"
-        hover = ":resources:gui_themes/Fantasy/Buttons/Hover.png"
-        clicked = ":resources:gui_themes/Fantasy/Buttons/Clicked.png"
-        locked = ":resources:gui_themes/Fantasy/Buttons/Locked.png"
-        self.theme.add_button_textures(normal, hover, clicked, locked)
-
-    def set_theme(self):
-        self.theme = arcade.gui.Theme()
-        self.set_dialogue_box_texture()
-        self.set_button_texture()
-        self.theme.set_font(24, arcade.color.WHITE)
-
-
 def main():
-    game = MyGame(SCREEN_WIDTH, SCREEN_HEIGHT)
+    game = MyGame(SCREEN_WIDTH, SCREEN_HEIGHT, MenuClosed())
     game.setup()
     arcade.run()
 
