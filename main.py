@@ -4,9 +4,13 @@ from time import sleep
 from typing import Optional
 from abc import ABC, abstractmethod
 import os
-
+import datetime
+import json
 import math
 import random
+from datetime import datetime
+from random import sample
+from string import ascii_letters, digits
 
 import arcade
 
@@ -30,15 +34,18 @@ TEXTURE_DOWN = 3
 
 
 class MyGame(arcade.Window):
+    _save_point = None
 
     def __init__(self, width, height, state: State) -> None:
+        # self._save_point = savePoint
         self.transition_to(state)
         super().__init__(width, height)
+        self.caretaker = None
         self.bug_list = None
         self.tongue_list = None
         self.flower_list = None
         self.frog_list = None
-        self.score_text = None
+        self.score = None
         arcade.set_background_color(arcade.color.FRENCH_BEIGE)
         file_path = os.path.dirname(os.path.abspath(__file__))
         os.chdir(file_path)
@@ -47,10 +54,40 @@ class MyGame(arcade.Window):
         self.half_height = self.height / 2
         self.theme = None
 
-    def setup(self):
+    def get_photoshot(self):
+        return {
+            'frogs': [item.get_photoshot() for item in self.frog_list],
+            'bugs': [item.get_photoshot() for item in self.bug_list],
+            'flowers': [item.get_photoshot() for item in self.flower_list],
+            'score': self.score
+        }
+
+    def restore(self, state) -> None:
+        """
+        Восстанавливает состояние Создателя из объекта снимка.
+        """
+        self.frog_list = arcade.SpriteList()
+        self.bug_list = arcade.SpriteList()
+        self.flower_list = arcade.SpriteList()
+
+        self.frog_list.extend([Frog.from_photoshot(item) for item in state['frogs']])
+        self.bug_list.extend([Bug.from_photoshot(item) for item in state['bugs']])
+        self.flower_list.extend([Flower.from_photoshot(item) for item in state['flowers']])
+
+        self.score = state['score']
+
+        self.frog_sprite = self.frog_list[0]
+
+
+        self.obstacle_list = arcade.SpriteList()
+        self.obstacle_list.extend(self.bug_list)
+        self.obstacle_list.extend(self.flower_list)
+        self.physics_engine = arcade.PhysicsEngineSimple(self.frog_sprite, self.obstacle_list)
+
+    def setup(self, caretaker):
         # Настроить игру здесь
         """ Настроить игру и инициализировать переменные. """
-
+        self.caretaker = caretaker
         # Создать список спрайтов
         self.frog_list = arcade.SpriteList()
         self.bug_list = arcade.SpriteList()
@@ -96,6 +133,7 @@ class MyGame(arcade.Window):
         """ Отрендерить этот экран. """
         arcade.start_render()
         # Здесь код рисунка
+
         self.frog_list.draw()
         self.bug_list.draw()
         self.flower_list.draw()
@@ -139,17 +177,19 @@ class MyGame(arcade.Window):
         elif self.dialogue_box_list[0].active is not True and type(self._state).__name__ == 'MenuOpened':
             self.transition_to(MenuClosed())
 
-
     def add_dialogue_box(self):
         color = (220, 228, 255)
         dialoguebox = arcade.gui.DialogueBox(self.half_width, self.half_height, self.half_width * 1.1,
                                              self.half_height * 1.5, color, self.theme)
         close_button = CloseButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 40,
                                    theme=self.theme)
-        save_button = SaveButton(dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 100,
+        save_button = SaveButton(self, dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 100,
+                                 theme=self.theme)
+        load_button = LoadButton(self, dialoguebox, self.half_width, self.half_height - (self.half_height / 2) + 160,
                                  theme=self.theme)
         dialoguebox.button_list.append(close_button)
         dialoguebox.button_list.append(save_button)
+        dialoguebox.button_list.append(load_button)
         message = "Hello I am a Dialogue Box."
         dialoguebox.text_list.append(
             arcade.gui.TextBox(message, self.half_width, self.half_height, self.theme.font_color))
@@ -198,6 +238,90 @@ class State(ABC):
     @abstractmethod
     def on_key_release(self, game, key, modifires) -> None:
         pass
+
+
+# class Memento(ABC):
+#     """
+#     Интерфейс Снимка предоставляет способ извлечения метаданных снимка, таких
+#     как дата создания или название. Однако он не раскрывает состояние Создателя.
+#     """
+#
+#     @abstractmethod
+#     def get_bug_list(self) -> arcade.sprite_list:
+#         pass
+#
+#     @abstractmethod
+#     def get_frog_list(self) -> arcade.sprite_list:
+#         pass
+#
+#     @abstractmethod
+#     def get_flower_list(self) -> arcade.sprite_list:
+#         pass
+#
+#     @abstractmethod
+#     def get_score(self) -> int:
+#         pass
+#
+#     @abstractmethod
+#     def get_obstacle_list(self) -> arcade.sprite_list:
+#         pass
+
+
+# class ConcreteMemento(Memento):
+#     def __init__(self, frog_list, bug_list, flower_list, score, obstacle_list) -> None:
+#         self.frog_list = frog_list
+#         self.bug_list = bug_list
+#         self.flower_list = flower_list
+#         self.score = score
+#         self.obstacle_list = obstacle_list
+#
+#     def get_frog_list(self) -> arcade.sprite_list:
+#         return self.frog_list
+#
+#     def get_bug_list(self) -> arcade.sprite_list:
+#         return self.bug_list
+#
+#     def get_flower_list(self) -> arcade.sprite_list:
+#         return self.flower_list
+#
+#     def get_score(self) -> int:
+#         return self.score
+#
+#     def get_obstacle_list(self) -> arcade.sprite_list:
+#         return self.obstacle_list
+
+class Caretaker():
+    """
+    Опекун не зависит от класса Конкретного Снимка. Таким образом, он не имеет
+    доступа к состоянию создателя, хранящемуся внутри снимка. Он работает со
+    всеми снимками через базовый интерфейс Снимка.
+    """
+
+    def __init__(self, mygame: MyGame) -> None:
+        self._mementos = []
+        self._originator = mygame
+
+    def backup(self) -> None:
+        print("\nCaretaker: Saving Originator's state...")
+        self._mementos.append(self._originator.save())
+
+    def undo(self) -> None:
+
+        if not len(self._mementos):
+            return
+        memento = self._mementos.pop()
+
+        print("\nUndo func")
+        print(f"Caretaker: Restoring state to: {memento.get_score()}")
+        try:
+            self._originator.restore(memento)
+        except Exception:
+            self.undo()
+
+    # def show_history(self) -> None:
+    #     print("Caretaker: Here's the list of mementos:")
+    #     for memento in self._mementos:
+    #         print(memento.())
 
 
 class MenuClosed(State):
@@ -385,6 +509,23 @@ class Frog(Actor):
         elif self.top > SCREEN_HEIGHT - 1:
             self.top = SCREEN_HEIGHT - 1
 
+    def get_photoshot(self):
+        return {
+            'center_x': self.center_x,
+            'center_y': self.center_y
+        }
+
+    def set_photoshot(self, photoshot):
+        for k, v in photoshot.items():
+            setattr(self, k, v)
+
+    @classmethod
+    def from_photoshot(cls, photoshot):
+        obj = ConcreteFactory.create_frog()
+        obj.set_photoshot(photoshot)
+        return obj
+
+
 
 class Aim(arcade.Sprite):
     """
@@ -402,8 +543,22 @@ class Aim(arcade.Sprite):
 
 
 class Bug(Aim):
-    def useful_function_b(self) -> str:
-        return "The result of the product B1."
+
+    def get_photoshot(self):
+        return {
+            'center_x': self.center_x,
+            'center_y': self.center_y
+        }
+
+    def set_photoshot(self, photoshot):
+        for k, v in photoshot.items():
+            setattr(self, k, v)
+
+    @classmethod
+    def from_photoshot(cls, photoshot):
+        obj = ConcreteFactory.create_bug()
+        obj.set_photoshot(photoshot)
+        return obj
 
 
 class Obstacle(arcade.Sprite):
@@ -422,8 +577,21 @@ class Obstacle(arcade.Sprite):
 
 
 class Flower(Obstacle):
-    def useful_function_b(self) -> str:
-        return "The result of the product B1."
+    def get_photoshot(self):
+        return {
+            'center_x': self.center_x,
+            'center_y': self.center_y
+        }
+
+    def set_photoshot(self, photoshot):
+        for k, v in photoshot.items():
+            setattr(self, k, v)
+
+    @classmethod
+    def from_photoshot(cls, photoshot):
+        obj = ConcreteFactory.create_flower()
+        obj.set_photoshot(photoshot)
+        return obj
 
 
 class Weapon(arcade.Sprite):
@@ -497,12 +665,34 @@ class CloseButton(arcade.gui.TextButton):
 
 
 class SaveButton(arcade.gui.TextButton):
-    def __init__(self, dialoguebox, x, y, width=110, height=50, text="Save", theme=None):
+    def __init__(self, game, dialoguebox, x, y, width=110, height=50, text="Save", theme=None):
         super().__init__(x, y, width, height, text, theme=theme)
         self.dialoguebox = dialoguebox
+        self.game = game
 
     def on_press(self):
         if self.dialoguebox.active:
+            #now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            with open(f'data.json', 'w') as stream:
+                json.dump(self.game.get_photoshot(), stream)
+            self.pressed = True
+
+    def on_release(self):
+        if self.pressed:
+            self.pressed = False
+
+
+class LoadButton(arcade.gui.TextButton):
+    def __init__(self, game, dialoguebox, x, y, width=110, height=50, text="Load", theme=None):
+        super().__init__(x, y, width, height, text, theme=theme)
+        self.dialoguebox = dialoguebox
+        self.game = game
+
+    def on_press(self):
+        if self.dialoguebox.active:
+            with open(f'data.json') as stream:
+                snapshot = json.load(stream)
+                self.game.restore(snapshot)
             self.pressed = True
 
     def on_release(self):
@@ -512,7 +702,8 @@ class SaveButton(arcade.gui.TextButton):
 
 def main():
     game = MyGame(SCREEN_WIDTH, SCREEN_HEIGHT, MenuClosed())
-    game.setup()
+    caretaker = Caretaker(game)
+    game.setup(caretaker)
     arcade.run()
 
 
